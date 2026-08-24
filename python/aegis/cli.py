@@ -24,6 +24,7 @@ from aegis.marketdata import (
     ingest_prices,
     ingest_treasury,
 )
+from aegis.vol import build_surface
 
 DEFAULT_DB = Path("data/warehouse/market.duckdb")
 DEFAULT_ARCHIVE = Path("data/raw")
@@ -37,9 +38,11 @@ app = typer.Typer(
 fetch_app = typer.Typer(help="Pull market data into the bitemporal store.", no_args_is_help=True)
 store_app = typer.Typer(help="Inspect the bitemporal store.", no_args_is_help=True)
 curve_app = typer.Typer(help="Build and inspect discount curves.", no_args_is_help=True)
+vol_app = typer.Typer(help="Calibrate and inspect volatility surfaces.", no_args_is_help=True)
 app.add_typer(fetch_app, name="fetch")
 app.add_typer(store_app, name="store")
 app.add_typer(curve_app, name="curve")
+app.add_typer(vol_app, name="vol")
 console = Console()
 
 DbOption = Annotated[Path, typer.Option("--db", help="DuckDB warehouse file.")]
@@ -219,6 +222,56 @@ def curve_show(
         }
     ).with_columns(pl.col("forward").map_elements(lambda r: f"{r:.4%}", return_dtype=pl.String))
     _print_frame("Implied forwards", forwards)
+
+
+@vol_app.command("surface")
+def vol_surface(
+    symbol: Annotated[str, typer.Argument(help="Underlying ticker, e.g. KO.")],
+    value_date: Annotated[str, typer.Option("--date", help="Chain date (YYYY-MM-DD).")] = "",
+    db: DbOption = DEFAULT_DB,
+) -> None:
+    """Calibrate the SVI surface for one underlying and print it."""
+    import polars as pl
+
+    with MarketStore(db) as store:
+        chain = store.as_of("option_quote", where=f"underlying = '{symbol.upper()}'")
+        if value_date:
+            chain = chain.filter(pl.col("value_date") == _day(value_date))
+        if chain.is_empty():
+            console.print(f"[red]no option quotes stored for {symbol.upper()}[/red]")
+            raise typer.Exit(code=1)
+
+        session = chain["value_date"].max()
+        assert isinstance(session, date)  # noqa: S101 - column type is known
+        chain = chain.filter(pl.col("value_date") == session)
+        quotes = store.as_of("curve_point", start=session - timedelta(days=30), end=session)
+
+    if quotes.is_empty():
+        console.print("[red]no curve quotes stored near that date; run `aegis fetch curve`[/red]")
+        raise typer.Exit(code=1)
+
+    curve = curve_from_store(quotes, max(quotes["value_date"].to_list()))
+    surface = build_surface(chain, curve, reference_date=session)
+
+    table = Table(title=f"{surface.underlying} volatility surface — {session}", header_style="bold")
+    columns = ("expiry", "years", "forward", "ATM vol", "skew 90-110", "RMSE", "quotes", "fit")
+    for column in columns:
+        table.add_column(column, justify="right")
+    for calibrated in surface.slices:
+        low = float(calibrated.implied_vol(calibrated.forward * 0.9)[0])
+        high = float(calibrated.implied_vol(calibrated.forward * 1.1)[0])
+        table.add_row(
+            calibrated.expiry.isoformat(),
+            f"{calibrated.time:.3f}",
+            f"{calibrated.forward:.2f}",
+            f"{calibrated.atm_vol:.2%}",
+            f"{low - high:+.2%}",
+            f"{calibrated.rmse_total_variance:.2e}",
+            str(calibrated.quote_count),
+            "[yellow]repaired[/yellow]" if calibrated.repaired else "clean",
+        )
+    console.print(table)
+    console.print(f"spot {surface.spot:.2f} — {surface.check_arbitrage()}")
 
 
 def _day(text: str) -> date:

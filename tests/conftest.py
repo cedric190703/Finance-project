@@ -23,7 +23,7 @@ FIXTURE_START = date(2023, 1, 2)
 FIXTURE_END = date(2024, 12, 31)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def fred() -> FredProvider:
     """A FRED adapter replaying the committed fixtures."""
     provider = FredProvider.replaying(FIXTURE_ARCHIVE)
@@ -31,7 +31,7 @@ def fred() -> FredProvider:
     return provider
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def ecb() -> EcbProvider:
     """An ECB adapter replaying the committed fixtures."""
     provider = EcbProvider.replaying(FIXTURE_ARCHIVE)
@@ -39,7 +39,7 @@ def ecb() -> EcbProvider:
     return provider
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def cboe() -> CboeProvider:
     """A Cboe adapter replaying the committed fixtures."""
     provider = CboeProvider.replaying(FIXTURE_ARCHIVE)
