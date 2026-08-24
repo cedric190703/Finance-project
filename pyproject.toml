@@ -1,0 +1,127 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "aegis"
+version = "0.1.0"
+description = "Multi-asset risk and P&L engine: curves, vol surfaces, pricing, VaR, and P&L explain."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Cedric Brzyski" }]
+keywords = ["quantitative-finance", "risk", "var", "pnl-attribution", "derivatives"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+dependencies = [
+    "numpy>=1.26",
+    "polars>=1.0",
+    "duckdb>=1.0",
+    "pyarrow>=16.0",
+    "pydantic>=2.7",
+    "httpx>=0.27",
+    "typer>=0.12",
+    "rich>=13.7",
+    "python-dateutil>=2.9",
+    "pyyaml>=6.0",
+    "scipy>=1.13",
+]
+
+[project.optional-dependencies]
+api = ["fastapi>=0.111", "uvicorn[standard]>=0.30", "prometheus-client>=0.20"]
+dashboard = ["streamlit>=1.36", "plotly>=5.22"]
+
+[project.scripts]
+aegis = "aegis.cli:app"
+
+[project.urls]
+Repository = "https://github.com/cbrzyski/aegis"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-cov>=5.0",
+    "pytest-benchmark>=4.0",
+    "hypothesis>=6.100",
+    "mypy>=1.10",
+    "ruff>=0.5",
+    "types-pyyaml>=6.0",
+    "types-python-dateutil>=2.9",
+    "maturin>=1.7",
+]
+
+[tool.maturin]
+python-source = "python"
+module-name = "aegis._core"
+manifest-path = "crates/aegis-py/Cargo.toml"
+features = ["pyo3/extension-module"]
+
+[tool.uv]
+# The extension module is rebuilt from source on every sync of the workspace root.
+package = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["python", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",      # pycodestyle / pyflakes
+    "I",                 # isort
+    "N",                 # pep8-naming
+    "UP",                # pyupgrade
+    "B",                 # bugbear
+    "C4",                # comprehensions
+    "SIM",               # simplify
+    "RUF",               # ruff-specific
+    "D",                 # pydocstyle
+    "ANN",               # annotations
+    "PT",                # pytest style
+    "NPY",               # numpy legacy API
+]
+ignore = [
+    "D107",   # __init__ docstring lives on the class
+    "D203", "D213",  # mutually exclusive with the ones we keep
+    "ANN401", # Any is occasionally the honest annotation
+    "N803", "N806",  # financial maths reads better with S, K, T, r, sigma
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D100", "D101", "D102", "D103", "ANN001", "ANN201"]
+"bench/*" = ["D100", "D103", "ANN001", "ANN201"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["python/aegis", "tests"]
+mypy_path = "python"
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+disallow_any_generics = true
+
+[[tool.mypy.overrides]]
+module = ["duckdb.*", "plotly.*", "streamlit.*", "scipy.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers --strict-config"
+markers = [
+    "network: hits a live market-data provider (deselected by default in CI)",
+    "slow: takes more than a second",
+]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+source = ["python/aegis"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]
