@@ -8,8 +8,9 @@ explain the daily P&L down to the unexplained residual.
 Python for orchestration and modelling; **Rust for the compute kernels**, bound
 through PyO3 and shipped as a wheel.
 
-> Status: under construction — see [`PLAN.md`](PLAN.md) for the full design and
-> the phase-by-phase build order.
+> Status: complete roadmap implementation. See [`PLAN.md`](PLAN.md) for the
+> design and [`docs/architecture.md`](docs/architecture.md) for the deployed
+> component boundaries.
 
 ## The compiled core
 
@@ -54,6 +55,32 @@ make check       # lint, types, clippy, both test suites
 uv run aegis version
 ```
 
+## Daily workflow
+
+```bash
+# Ingest data first (each response is archived before parsing)
+uv run aegis fetch curve
+uv run aegis fetch index SP500 VIXCLS
+uv run aegis fetch fx USD
+uv run aegis fetch options KO
+
+# Produce risk, validate the VaR model, and run the idempotent EOD ledger
+uv run aegis risk report --date 2026-08-24
+uv run aegis risk backtest --date 2026-08-24
+uv run aegis run eod --date 2026-08-24
+```
+
+The FastAPI service exposes OpenAPI at `/docs`, health at `/health`, and
+Prometheus metrics at `/metrics`. Run the local two-service stack with:
+
+```bash
+docker compose -f docker/compose.yml up --build
+```
+
+The API is then at `http://localhost:8000` and the Streamlit dashboard at
+`http://localhost:8501`. The compose file is intended for local development;
+put the API behind an authenticated proxy before any wider deployment.
+
 ## Layout
 
 | Path | What lives there |
@@ -64,6 +91,18 @@ uv run aegis version
 | `tests` | pytest + Hypothesis property tests |
 | `bench` | Python-side benchmarks; Rust benchmarks live in `crates/*/benches` |
 | `docs` | Architecture, methodology, and architecture decision records |
+
+## Model controls
+
+- Every market-data observation is bitemporal: the value date and the date the
+  system learned it are both preserved, so historical reports can be replayed
+  as they were actually knowable at the time.
+- VaR validation includes Kupiec coverage, Christoffersen independence,
+  conditional coverage, and the Basel traffic light.
+- The P&L waterfall reconciles delta, gamma, vega, theta, carry, rates and FX
+  to the actual mark, retaining an explicit unexplained residual.
+- The EOD DAG records idempotency keys, task state, and input/output lineage in
+  the same DuckDB warehouse as the market data.
 
 ## Licence
 
