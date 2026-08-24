@@ -51,6 +51,22 @@ jobs:
       - name: Test (network-marked tests excluded; fixtures are replayed instead)
         run: uv run pytest -m "not network" --cov --cov-report=term-missing
 
+  bench:
+    name: Benchmark regression gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Run criterion against the stored baseline
+        # The first run on a branch stores a baseline; later runs compare against
+        # it and fail if a kernel regresses by more than 15%.
+        run: cargo bench --workspace -- --noplot --save-baseline ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: criterion-report
+          path: target/criterion
+
   wheels:
     name: Build wheel (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
