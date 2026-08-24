@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+
+# Rust
+target/
+
+# Data: raw responses and the warehouse are reproducible, never committed
+data/raw/
+data/warehouse/
+*.duckdb
+*.duckdb.wal
+
+# Tooling
+.DS_Store
+.idea/
+.vscode/
+
+# Compiled extension module, built in place by maturin
+*.so
+*.pyd
+*.dylib

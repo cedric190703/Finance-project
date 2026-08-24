@@ -1,0 +1,21 @@
+[package]
+name = "aegis-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Numerical kernels for the Aegis risk engine: pricing, Monte Carlo, risk aggregation."
+
+[dependencies]
+rayon.workspace = true
+rand.workspace = true
+rand_xoshiro.workspace = true
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+approx = "0.5"
+
+[[bench]]
+name = "kernels"
+harness = false

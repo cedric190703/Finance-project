@@ -1,0 +1,17 @@
+[package]
+name = "aegis-py"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "PyO3 bindings exposing the Aegis kernels as the `aegis._core` extension module."
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+aegis-core.workspace = true
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py311"] }
+numpy = "0.22"
