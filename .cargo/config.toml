@@ -1,0 +1,9 @@
+# A Python extension module leaves the interpreter's symbols unresolved at link
+# time; they are supplied by whichever interpreter loads it. maturin passes these
+# flags itself, so this file is what makes a plain `cargo build`, `cargo clippy`
+# and `cargo test` work on macOS as well.
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
