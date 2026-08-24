@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Annotated
 
+import polars as pl
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -24,6 +25,8 @@ from aegis.marketdata import (
     ingest_prices,
     ingest_treasury,
 )
+from aegis.portfolio import Portfolio
+from aegis.risk import run_report
 from aegis.vol import build_surface
 
 DEFAULT_DB = Path("data/warehouse/market.duckdb")
@@ -39,10 +42,12 @@ fetch_app = typer.Typer(help="Pull market data into the bitemporal store.", no_a
 store_app = typer.Typer(help="Inspect the bitemporal store.", no_args_is_help=True)
 curve_app = typer.Typer(help="Build and inspect discount curves.", no_args_is_help=True)
 vol_app = typer.Typer(help="Calibrate and inspect volatility surfaces.", no_args_is_help=True)
+risk_app = typer.Typer(help="Value the book and measure its risk.", no_args_is_help=True)
 app.add_typer(fetch_app, name="fetch")
 app.add_typer(store_app, name="store")
 app.add_typer(curve_app, name="curve")
 app.add_typer(vol_app, name="vol")
+app.add_typer(risk_app, name="risk")
 console = Console()
 
 DbOption = Annotated[Path, typer.Option("--db", help="DuckDB warehouse file.")]
@@ -183,8 +188,6 @@ def curve_show(
     db: DbOption = DEFAULT_DB,
 ) -> None:
     """Bootstrap the Treasury curve for one session and print it."""
-    import polars as pl
-
     session = _day(value_date)
     with MarketStore(db) as store:
         quotes = store.as_of(
@@ -231,8 +234,6 @@ def vol_surface(
     db: DbOption = DEFAULT_DB,
 ) -> None:
     """Calibrate the SVI surface for one underlying and print it."""
-    import polars as pl
-
     with MarketStore(db) as store:
         chain = store.as_of("option_quote", where=f"underlying = '{symbol.upper()}'")
         if value_date:
@@ -274,20 +275,124 @@ def vol_surface(
     console.print(f"spot {surface.spot:.2f} — {surface.check_arbitrage()}")
 
 
+DEFAULT_PORTFOLIO = Path("config/portfolio.yaml")
+DEFAULT_SCENARIOS = Path("config/scenarios/stress.yaml")
+
+
+@risk_app.command("report")
+def risk_report(
+    value_date: Annotated[str, typer.Option("--date", help="Session to report on.")] = "",
+    portfolio: Annotated[Path, typer.Option("--portfolio", help="Book definition.")] = (
+        DEFAULT_PORTFOLIO
+    ),
+    scenarios: Annotated[Path, typer.Option("--scenarios", help="Stress definitions.")] = (
+        DEFAULT_SCENARIOS
+    ),
+    confidence: Annotated[float, typer.Option("--confidence", help="VaR confidence.")] = 0.99,
+    lookback: Annotated[int, typer.Option("--lookback", help="VaR window, in days.")] = 730,
+    knowledge_date: Annotated[
+        str, typer.Option("--as-known-on", help="Rebuild using only what was known then.")
+    ] = "",
+    db: DbOption = DEFAULT_DB,
+) -> None:
+    """Produce the daily risk report: valuation, greeks, VaR, stress."""
+    book = Portfolio.from_yaml(portfolio)
+    with MarketStore(db) as store:
+        report = run_report(
+            store,
+            book,
+            _day(value_date),
+            lookback_days=lookback,
+            confidence=confidence,
+            scenario_path=scenarios,
+            knowledge_date=_day(knowledge_date) if knowledge_date else None,
+        )
+
+    console.print(
+        f"\n[bold]{book.name}[/bold] — {report.value_date} — "
+        f"value [bold]{report.portfolio_value:,.0f} USD[/bold]\n"
+    )
+    _print_frame("Positions", report.valuations)
+
+    greeks = Table(title="Book sensitivities", header_style="bold")
+    greeks.add_column("greek")
+    greeks.add_column("value", justify="right")
+    greeks.add_column("meaning")
+    meanings = {
+        "delta": "P&L for a 1% rise in every underlying",
+        "gamma": "second-order term for the same 1% move",
+        "vega": "P&L per volatility point",
+        "theta": "P&L per calendar day, all else equal",
+        "rho": "P&L per basis point on the discount rate",
+        "dv01": "P&L per basis point fall in yields",
+    }
+    for name, value in report.greeks.items():
+        greeks.add_row(name, f"{value:,.1f}", meanings.get(name, ""))
+    console.print(greeks)
+
+    var_table = Table(title=f"Value at Risk ({confidence:.0%})", header_style="bold")
+    for column in ("method", "VaR", "% of book", "Expected Shortfall", "scenarios"):
+        var_table.add_column(column, justify="right")
+    for result in report.var_results:
+        var_table.add_row(
+            str(result.method),
+            f"{result.var:,.0f}",
+            f"{result.var_percent:.2f}%",
+            f"{result.expected_shortfall:,.0f}",
+            f"{result.observations:,}",
+        )
+    console.print(var_table)
+
+    _print_frame("Component VaR", report.contributions)
+
+    stress = Table(title="Stress scenarios", header_style="bold")
+    stress.add_column("scenario")
+    stress.add_column("P&L", justify="right")
+    stress.add_column("% of book", justify="right")
+    for name, pnl in sorted(report.stress.items(), key=lambda item: item[1]):
+        colour = "red" if pnl < 0 else "green"
+        stress.add_row(
+            name,
+            f"[{colour}]{pnl:,.0f}[/{colour}]",
+            f"[{colour}]{100 * pnl / report.portfolio_value:+.2f}%[/{colour}]",
+        )
+    console.print(stress)
+
+    proxies = report.factor_summary.filter(pl.col("note") != "")
+    if not proxies.is_empty():
+        console.print(
+            "[yellow]Proxied factors:[/yellow] "
+            + "; ".join(f"{row['factor']} — {row['note']}" for row in proxies.iter_rows(named=True))
+        )
+
+
 def _day(text: str) -> date:
     return date.fromisoformat(text) if text else date.today()
 
 
 def _print_frame(title: str, frame: object) -> None:
-    import polars as pl
-
     assert isinstance(frame, pl.DataFrame)  # noqa: S101 - internal helper contract
     table = Table(title=title, header_style="bold")
     for column in frame.columns:
-        table.add_column(column)
+        table.add_column(column, justify="right" if frame[column].dtype.is_numeric() else "left")
     for row in frame.iter_rows():
-        table.add_row(*(("" if v is None else str(v)) for v in row))
+        table.add_row(*(_cell(value) for value in row))
     console.print(table)
+
+
+def _cell(value: object) -> str:
+    """Format one table cell: thousands for money, decimals for small numbers."""
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        if value == 0.0:
+            return "0"
+        if abs(value) >= 1000:
+            return f"{value:,.0f}"
+        if abs(value) >= 1:
+            return f"{value:,.2f}"
+        return f"{value:.4f}"
+    return str(value)
 
 
 if __name__ == "__main__":  # pragma: no cover
