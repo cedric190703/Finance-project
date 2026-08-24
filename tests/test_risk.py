@@ -15,20 +15,27 @@ from aegis.instruments import EquityPosition, MarketSnapshot
 from aegis.marketdata import CboeProvider, FredProvider, MarketStore
 from aegis.portfolio import Portfolio, PortfolioError
 from aegis.risk import (
+    BaselZone,
     FactorHistory,
     FactorMapping,
     ScenarioError,
     VarMethod,
     apply_shocks,
+    backtest_series,
+    basel_zone,
     build_factor_history,
+    christoffersen_independence,
+    conditional_coverage,
     contribution_report,
     expected_shortfall,
     factor_exposures,
     historical_pnl,
     historical_var,
+    kupiec_pof,
     load_scenarios,
     monte_carlo_var,
     parametric_var,
+    rolling_backtest,
     value_at_risk,
 )
 from aegis.risk.factors import ABSOLUTE, RELATIVE
@@ -445,3 +452,81 @@ def test_the_result_prints_the_way_a_risk_report_reads(
     assert "99%" in text
     assert "1-day" in text
     assert "ES" in text
+
+
+# ------------------------------------------------------------- backtesting
+
+
+def test_kupiec_accepts_a_plausible_number_of_exceptions() -> None:
+    statistic, p_value = kupiec_pof(exceptions=3, observations=250, confidence=0.99)
+    assert statistic >= 0.0
+    assert p_value > 0.05
+
+
+def test_kupiec_rejects_a_model_with_too_many_exceptions() -> None:
+    statistic, p_value = kupiec_pof(exceptions=20, observations=250, confidence=0.99)
+    assert statistic > 10.0
+    assert p_value < 0.01
+
+
+def test_christoffersen_detects_clustered_exceptions() -> None:
+    clustered = np.zeros(250, dtype=bool)
+    clustered[100:110] = True
+    independent = np.zeros(250, dtype=bool)
+    independent[[20, 80, 140, 200]] = True
+    _, clustered_p = christoffersen_independence(clustered)
+    _, independent_p = christoffersen_independence(independent)
+    assert clustered_p < 0.05
+    assert independent_p > 0.05
+
+
+def test_conditional_coverage_combines_both_tests() -> None:
+    breaches = np.zeros(250, dtype=bool)
+    breaches[50:60] = True
+    statistic, p_value = conditional_coverage(breaches, 0.99)
+    assert statistic > 10.0
+    assert p_value < 0.01
+
+
+@pytest.mark.parametrize(
+    ("exceptions", "expected_zone", "multiplier"),
+    [
+        (4, BaselZone.GREEN, 3.0),
+        (5, BaselZone.AMBER, 3.4),
+        (9, BaselZone.AMBER, 3.85),
+        (10, BaselZone.RED, 4.0),
+    ],
+)
+def test_basel_traffic_light_matches_the_250_day_table(
+    exceptions: int, expected_zone: BaselZone, multiplier: float
+) -> None:
+    zone, actual_multiplier = basel_zone(exceptions)
+    assert zone is expected_zone
+    assert actual_multiplier == multiplier
+
+
+def test_backtest_reports_breaches_and_worst_shortfall() -> None:
+    pnl = np.full(250, 10.0)
+    pnl[[10, 70, 180]] = [-120.0, -130.0, -180.0]
+    result = backtest_series(pnl, np.full(250, 100.0))
+    assert result.exceptions == 3
+    assert result.zone is BaselZone.GREEN
+    assert result.worst_breach == 80.0
+    assert result.summary().filter(pl.col("test").str.contains("Kupiec"))["verdict"][0] == "pass"
+
+
+def test_backtest_rejects_misaligned_series() -> None:
+    with pytest.raises(ValueError, match="same length"):
+        backtest_series(np.zeros(10), np.zeros(9))
+
+
+def test_rolling_backtest_has_no_lookahead(
+    book: Portfolio, market: MarketSnapshot, history: FactorHistory
+) -> None:
+    result, series = rolling_backtest(book, market, history, window=250)
+    assert result.observations == len(history) - 250
+    assert series.height == result.observations
+    assert series["value_date"][0] == history.dates[250]
+    minimum_forecast = series["var_forecast"].min()
+    assert isinstance(minimum_forecast, (int, float))
+    assert minimum_forecast >= 0.0

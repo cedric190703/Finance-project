@@ -26,7 +26,13 @@ from aegis.marketdata import (
     ingest_treasury,
 )
 from aegis.portfolio import Portfolio
-from aegis.risk import run_report
+from aegis.risk import (
+    build_factor_history,
+    build_market,
+    default_factor_mappings,
+    rolling_backtest,
+    run_report,
+)
 from aegis.vol import build_surface
 
 DEFAULT_DB = Path("data/warehouse/market.duckdb")
@@ -364,6 +370,44 @@ def risk_report(
             "[yellow]Proxied factors:[/yellow] "
             + "; ".join(f"{row['factor']} — {row['note']}" for row in proxies.iter_rows(named=True))
         )
+
+
+@risk_app.command("backtest")
+def risk_backtest(
+    value_date: Annotated[str, typer.Option("--date", help="Last session to test.")] = "",
+    portfolio: Annotated[Path, typer.Option("--portfolio", help="Book definition.")] = (
+        DEFAULT_PORTFOLIO
+    ),
+    confidence: Annotated[float, typer.Option("--confidence", help="VaR confidence.")] = 0.99,
+    window: Annotated[int, typer.Option("--window", help="Historical VaR window, in days.")] = 250,
+    history_days: Annotated[
+        int, typer.Option("--history-days", help="Calendar days to load for the backtest.")
+    ] = 1000,
+    db: DbOption = DEFAULT_DB,
+) -> None:
+    """Backtest rolling historical VaR with regulatory coverage tests."""
+    session = _day(value_date)
+    book = Portfolio.from_yaml(portfolio)
+    with MarketStore(db) as store:
+        market = build_market(store, session)
+        history = build_factor_history(
+            store,
+            default_factor_mappings(),
+            session - timedelta(days=history_days),
+            session,
+        )
+    result, series = rolling_backtest(book, market, history, confidence, window)
+
+    console.print(f"\n[bold]{book.name}[/bold] — VaR backtest through {session}\n")
+    _print_frame("Coverage tests", result.summary())
+    console.print(
+        f"Basel traffic light: [bold]{result.zone}[/bold] — "
+        f"{result.exceptions} exceptions / {result.observations} observations "
+        f"(expected {result.expected:.1f}); capital multiplier {result.capital_multiplier:.2f}; "
+        f"worst breach {result.worst_breach:,.0f} USD"
+    )
+    breaches = series.filter(pl.col("breach")).sort("shortfall", descending=True).head(10)
+    _print_frame("Most severe VaR breaches", breaches)
 
 
 def _day(text: str) -> date:
