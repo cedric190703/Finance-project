@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.table import Table
 
 from aegis import __version__
+from aegis.curves import Interpolation, curve_from_store
 from aegis.marketdata import (
     CboeProvider,
     EcbProvider,
@@ -35,8 +36,10 @@ app = typer.Typer(
 )
 fetch_app = typer.Typer(help="Pull market data into the bitemporal store.", no_args_is_help=True)
 store_app = typer.Typer(help="Inspect the bitemporal store.", no_args_is_help=True)
+curve_app = typer.Typer(help="Build and inspect discount curves.", no_args_is_help=True)
 app.add_typer(fetch_app, name="fetch")
 app.add_typer(store_app, name="store")
+app.add_typer(curve_app, name="curve")
 console = Console()
 
 DbOption = Annotated[Path, typer.Option("--db", help="DuckDB warehouse file.")]
@@ -163,6 +166,59 @@ def store_revisions(
             console.print(f"[green]no restatements recorded in {table}[/green]")
             return
         _print_frame(f"Restatements in {table}", frame)
+
+
+@curve_app.command("show")
+def curve_show(
+    value_date: Annotated[str, typer.Option("--date", help="Session to build (YYYY-MM-DD).")] = "",
+    interpolation: Annotated[
+        Interpolation, typer.Option("--interpolation", help="Interpolation scheme.")
+    ] = Interpolation.LOG_LINEAR_DISCOUNT,
+    knowledge_date: Annotated[
+        str, typer.Option("--as-known-on", help="Rebuild using only what was known then.")
+    ] = "",
+    db: DbOption = DEFAULT_DB,
+) -> None:
+    """Bootstrap the Treasury curve for one session and print it."""
+    import polars as pl
+
+    session = _day(value_date)
+    with MarketStore(db) as store:
+        quotes = store.as_of(
+            "curve_point",
+            knowledge_date=_day(knowledge_date) if knowledge_date else None,
+            start=session,
+            end=session,
+        )
+    if quotes.is_empty():
+        console.print(f"[red]no curve quotes stored for {session}[/red]")
+        raise typer.Exit(code=1)
+
+    curve = curve_from_store(quotes, session, interpolation=interpolation)
+    table = Table(title=f"{curve.name} curve — {session} ({interpolation})", header_style="bold")
+    for column in ("tenor", "years", "par yield", "zero rate", "discount factor"):
+        table.add_column(column, justify="right")
+    quoted = dict(zip(quotes["tenor"].to_list(), quotes["rate"].to_list(), strict=True))
+    for label, years, zero, discount in curve.knot_table():
+        table.add_row(
+            label,
+            f"{years:.4f}",
+            f"{quoted.get(label, float('nan')):.4%}",
+            f"{zero:.4%}",
+            f"{discount:.6f}",
+        )
+    console.print(table)
+
+    forwards = pl.DataFrame(
+        {
+            "period": ["0-1y", "1-2y", "2-5y", "5-10y", "10-30y"],
+            "forward": [
+                curve.forward_rate(a, b)
+                for a, b in ((0.01, 1.0), (1.0, 2.0), (2.0, 5.0), (5.0, 10.0), (10.0, 30.0))
+            ],
+        }
+    ).with_columns(pl.col("forward").map_elements(lambda r: f"{r:.4%}", return_dtype=pl.String))
+    _print_frame("Implied forwards", forwards)
 
 
 def _day(text: str) -> date:
