@@ -82,3 +82,16 @@ def day(value: object) -> date:
     """
     assert isinstance(value, date)
     return value
+
+
+@pytest.fixture(scope="module")
+def risk_store(fred: FredProvider, ecb: EcbProvider, cboe: CboeProvider) -> Iterator[MarketStore]:
+    """A store loaded with two years of real curve, index and FX history."""
+    with MarketStore(":memory:") as store:
+        end = date(2026, 8, 24)
+        start = date(2024, 8, 1)
+        store.append("curve_point", fred.treasury_curve(start, end), source="fred")
+        store.append("price_eod", fred.series(["SP500", "VIXCLS"], start, end), source="fred")
+        store.append("fx_rate", ecb.fx_rates("USD", start, end), source="ecb")
+        store.append("price_eod", cboe.underlying_quote("KO"), source="cboe")
+        yield store

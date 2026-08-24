@@ -298,6 +298,38 @@ class VolSurface:
             tolerance,
         )
 
+    def scaled(self, factor: float) -> VolSurface:
+        """Return the surface with every implied volatility multiplied by a factor.
+
+        Total variance is the square of volatility, so scaling volatility by
+        ``f`` means scaling ``w`` by ``f²`` — and because SVI is affine in ``a``
+        and ``b``, that is exactly scaling those two parameters. The skew, the
+        smile's centre and its curvature are untouched, which is what a parallel
+        volatility shock is supposed to mean.
+
+        Args:
+            factor: Multiplier applied to every implied volatility.
+
+        Returns:
+            A new surface; the original is untouched.
+
+        Raises:
+            ValueError: if the factor is not positive.
+        """
+        if factor <= 0.0:
+            raise ValueError("volatility scale factor must be positive")
+        squared = factor * factor
+        shocked = tuple(
+            replace(
+                s,
+                parameters=replace(
+                    s.parameters, a=s.parameters.a * squared, b=s.parameters.b * squared
+                ),
+            )
+            for s in self.slices
+        )
+        return replace(self, slices=shocked)
+
     def to_frame(self) -> pl.DataFrame:
         """Return one row per calibrated slice, for display or storage.
 

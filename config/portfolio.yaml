@@ -1,0 +1,61 @@
+# A small multi-asset book, deliberately built so the risk report has something
+# to say: long equity delta, long credit-free duration, short volatility through
+# a covered call, and a euro leg so FX shows up in the decomposition.
+name: demo-book
+
+positions:
+  - id: CASH-USD
+    type: cash
+    currency: USD
+    amount: 250_000
+
+  - id: EQ-KO
+    type: equity
+    currency: USD
+    symbol: KO
+    quantity: 12_000
+
+  - id: EQ-SP500
+    type: equity
+    currency: USD
+    symbol: SP500
+    quantity: 400
+
+  # Covered calls against the KO holding: collects premium, caps the upside, and
+  # makes the book short gamma and short vega.
+  - id: OPT-KO-CALL
+    type: option
+    currency: USD
+    underlying: KO
+    strike: 95.0
+    expiry: 2027-01-15
+    right: C
+    quantity: -80
+
+  # A protective put, so the tail of the distribution is not simply linear.
+  - id: OPT-KO-PUT
+    type: option
+    currency: USD
+    underlying: KO
+    strike: 80.0
+    expiry: 2027-01-15
+    right: P
+    quantity: 40
+
+  - id: UST-10Y
+    type: bond
+    currency: USD
+    face: 1_000_000
+    coupon: 0.04
+    issue_date: 2024-11-15
+    maturity: 2034-11-15
+    frequency: SEMI_ANNUAL
+
+  - id: BUND-5Y
+    type: bond
+    currency: EUR
+    face: 500_000
+    coupon: 0.025
+    issue_date: 2024-06-15
+    maturity: 2029-06-15
+    frequency: ANNUAL

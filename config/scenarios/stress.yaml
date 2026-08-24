@@ -1,0 +1,59 @@
+# Stress scenarios. The historical ones are the actual peak-to-trough moves over
+# the windows named, not round numbers chosen to look severe: a stress test that
+# cannot be sourced back to something that happened is a stress test nobody
+# argues with, and one nobody argues with is one nobody acts on.
+scenarios:
+  - name: lehman-2008
+    description: >
+      15 September to 10 October 2008. Equities fall by a quarter, implied
+      volatility triples as the VIX runs from the low 20s to 70, and the Treasury
+      curve rallies hard as cash runs for the front end.
+    shocks:
+      SPOT:KO: -0.25
+      SPOT:SP500: -0.28
+      VOL:KO: 2.00
+      RATE:USD:2Y: -0.0125
+      RATE:USD:10Y: -0.0060
+      FX:EUR: -0.08
+
+  - name: covid-march-2020
+    description: >
+      19 February to 23 March 2020. The fastest bear market on record: a third
+      off the index in five weeks, the VIX above 80, and rates pinned to zero.
+    shocks:
+      SPOT:KO: -0.30
+      SPOT:SP500: -0.34
+      VOL:KO: 2.50
+      RATE:USD:2Y: -0.0110
+      RATE:USD:10Y: -0.0090
+      FX:EUR: 0.02
+
+  - name: rates-shock-2022
+    description: >
+      The 2022 repricing, compressed into one move: two hundred basis points
+      across the curve with equities down and volatility up modestly. The
+      scenario a long-duration book is most exposed to and least often shown.
+    shocks:
+      RATE:USD: 0.0200
+      RATE:EUR: 0.0200
+      SPOT:KO: -0.08
+      SPOT:SP500: -0.15
+      VOL:KO: 0.40
+
+  - name: vol-spike-only
+    description: >
+      Implied volatility up fifty percent with spot unchanged. Isolates vega:
+      a delta-hedged book that loses money here is short volatility, whatever
+      its delta report says.
+    shocks:
+      VOL:KO: 0.50
+
+  - name: curve-steepening
+    description: >
+      Front end anchored, long end fifty basis points higher. A parallel-shift
+      stress test would show almost nothing here, which is exactly why key-rate
+      shocks exist.
+    shocks:
+      RATE:USD:2Y: 0.0000
+      RATE:USD:10Y: 0.0035
+      RATE:USD:30Y: 0.0050

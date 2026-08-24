@@ -238,6 +238,44 @@ class MarketSnapshot:
             curves={ccy: curve.shift_parallel(basis_points) for ccy, curve in self.curves.items()},
         )
 
+    def with_vols_scaled(self, **factors: float) -> MarketSnapshot:
+        """Return a copy with volatility surfaces scaled.
+
+        Args:
+            **factors: Symbol to multiplier, e.g. ``KO=1.10`` for a 10% relative
+                rise in implied volatility across the surface.
+
+        Returns:
+            A new snapshot.
+        """
+        moved = dict(self.surfaces)
+        for symbol, factor in factors.items():
+            moved[symbol] = self.surface(symbol).scaled(factor)
+        return replace(self, surfaces=moved)
+
+    def with_fx_scaled(self, **factors: float) -> MarketSnapshot:
+        """Return a copy with FX rates scaled.
+
+        Args:
+            **factors: Currency to multiplier, e.g. ``EUR=1.01``.
+
+        Returns:
+            A new snapshot.
+        """
+        moved = dict(self.fx_rates)
+        for currency, factor in factors.items():
+            direct = f"{currency}{self.base_currency}"
+            inverse = f"{self.base_currency}{currency}"
+            if direct in moved:
+                moved[direct] *= factor
+            elif inverse in moved:
+                moved[inverse] /= factor
+            elif currency != self.base_currency:
+                raise MissingMarketDataError(
+                    f"no FX rate between {currency} and {self.base_currency}"
+                )
+        return replace(self, fx_rates=moved)
+
     def with_value_date(self, value_date: date) -> MarketSnapshot:
         """Return a copy dated to a different day, for theta and carry.
 
