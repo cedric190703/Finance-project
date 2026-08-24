@@ -25,6 +25,7 @@ from aegis.marketdata import (
     ingest_prices,
     ingest_treasury,
 )
+from aegis.pipeline import EodPipeline, PipelineContext, Task, TaskOutput
 from aegis.portfolio import Portfolio
 from aegis.risk import (
     build_factor_history,
@@ -49,11 +50,13 @@ store_app = typer.Typer(help="Inspect the bitemporal store.", no_args_is_help=Tr
 curve_app = typer.Typer(help="Build and inspect discount curves.", no_args_is_help=True)
 vol_app = typer.Typer(help="Calibrate and inspect volatility surfaces.", no_args_is_help=True)
 risk_app = typer.Typer(help="Value the book and measure its risk.", no_args_is_help=True)
+run_app = typer.Typer(help="Run reproducible end-of-day workflows.", no_args_is_help=True)
 app.add_typer(fetch_app, name="fetch")
 app.add_typer(store_app, name="store")
 app.add_typer(curve_app, name="curve")
 app.add_typer(vol_app, name="vol")
 app.add_typer(risk_app, name="risk")
+app.add_typer(run_app, name="run")
 console = Console()
 
 DbOption = Annotated[Path, typer.Option("--db", help="DuckDB warehouse file.")]
@@ -408,6 +411,62 @@ def risk_backtest(
     )
     breaches = series.filter(pl.col("breach")).sort("shortfall", descending=True).head(10)
     _print_frame("Most severe VaR breaches", breaches)
+
+
+@run_app.command("eod")
+def run_eod(
+    value_date: Annotated[str, typer.Option("--date", help="EOD session to process.")] = "",
+    portfolio: Annotated[Path, typer.Option("--portfolio", help="Book definition.")] = (
+        DEFAULT_PORTFOLIO
+    ),
+    scenarios: Annotated[Path, typer.Option("--scenarios", help="Stress definitions.")] = (
+        DEFAULT_SCENARIOS
+    ),
+    lookback: Annotated[int, typer.Option("--lookback", help="Risk history in days.")] = 730,
+    db: DbOption = DEFAULT_DB,
+) -> None:
+    """Run the idempotent EOD risk workflow and record its lineage."""
+    session = _day(value_date)
+    book = Portfolio.from_yaml(portfolio)
+
+    def check_market_data(context: PipelineContext) -> TaskOutput:
+        coverage = context.store.coverage()
+        if int(coverage["rows"].sum()) == 0:
+            raise ValueError("warehouse is empty; fetch market data before running EOD")
+        inputs = tuple(f"warehouse/{table}" for table in coverage["table_name"].to_list())
+        return TaskOutput(inputs=inputs, outputs=(f"market-ready/{context.value_date}",))
+
+    def calculate_risk(context: PipelineContext) -> TaskOutput:
+        run_report(
+            context.store,
+            book,
+            context.value_date,
+            lookback_days=lookback,
+            scenario_path=scenarios,
+        )
+        return TaskOutput(
+            inputs=(f"market-ready/{context.value_date}",),
+            outputs=(f"risk-report/{context.value_date}",),
+        )
+
+    with MarketStore(db) as store:
+        pipeline = EodPipeline(
+            store,
+            (
+                Task("market-data-ready", check_market_data),
+                Task("risk-report", calculate_risk, ("market-data-ready",)),
+            ),
+        )
+        outcomes = pipeline.run(session, {"portfolio": str(portfolio), "lookback": lookback})
+        _print_frame(
+            "EOD task ledger",
+            pl.DataFrame(
+                {
+                    "task": [outcome.task_name for outcome in outcomes],
+                    "status": [outcome.status for outcome in outcomes],
+                }
+            ),
+        )
 
 
 def _day(text: str) -> date:
