@@ -1,0 +1,12 @@
+{
+  "key": "c83649ac7c5468c9",
+  "source": "cboe",
+  "endpoint": "chain",
+  "params": {
+    "symbol": "KO"
+  },
+  "fetched_at": "2026-08-24T18:13:13.627915+00:00",
+  "content_sha256": "5f456d6fb17654537e1506420525c011ad10bf6b4a3747ffad43346084029090",
+  "bytes": 461550,
+  "file": "c83649ac7c5468c9.json"
+}

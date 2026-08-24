@@ -1,0 +1,12 @@
+{
+  "key": "8d7090a2f317037c",
+  "source": "fred",
+  "endpoint": "treasury",
+  "params": {
+    "id": "DGS1MO,DGS3MO,DGS6MO,DGS1,DGS2,DGS3,DGS5,DGS7,DGS10,DGS20,DGS30"
+  },
+  "fetched_at": "2026-08-24T18:13:09.328171+00:00",
+  "content_sha256": "613a75a3bcc28a555ae65d4fce9ca06a2266fc05353b1b1e8745cc6fb2ed794a",
+  "bytes": 970543,
+  "file": "8d7090a2f317037c.csv"
+}
