@@ -91,6 +91,10 @@ ignore = [
     "N803", "N806",  # financial maths reads better with S, K, T, r, sigma
 ]
 
+# Greek letters and mathematical operators are the notation this domain is
+# written in; renaming sigma to "o" would not be a readability improvement.
+allowed-confusables = ["σ", "ρ", "α", "β", "γ", "δ", "θ", "μ", "λ", "τ", "ν", "π", "Σ", "−", "·", "×", "≤", "≥", "≈", "²", "√"]
+
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D100", "D101", "D102", "D103", "ANN001", "ANN201", "S101"]
 "bench/*" = ["D100", "D103", "ANN001", "ANN201", "S101"]
