@@ -1,0 +1,12 @@
+{
+  "key": "63d23e60603692ad",
+  "source": "fred",
+  "endpoint": "series",
+  "params": {
+    "id": "SP500,VIXCLS"
+  },
+  "fetched_at": "2026-08-24T18:13:12.067240+00:00",
+  "content_sha256": "7a518c4a42f611960f4af2bb50519e66470e32b0e740a8a8b18637b9ca8c0b1d",
+  "bytes": 188112,
+  "file": "63d23e60603692ad.csv"
+}

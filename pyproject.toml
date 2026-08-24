@@ -82,6 +82,7 @@ select = [
     "ANN",               # annotations
     "PT",                # pytest style
     "NPY",               # numpy legacy API
+    "S",                 # flake8-bandit: SQL injection, weak RNG, hardcoded secrets
 ]
 ignore = [
     "D107",   # __init__ docstring lives on the class
@@ -91,8 +92,8 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["D100", "D101", "D102", "D103", "ANN001", "ANN201"]
-"bench/*" = ["D100", "D103", "ANN001", "ANN201"]
+"tests/*" = ["D100", "D101", "D102", "D103", "ANN001", "ANN201", "S101"]
+"bench/*" = ["D100", "D103", "ANN001", "ANN201", "S101"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

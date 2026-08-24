@@ -1,0 +1,12 @@
+{
+  "key": "f9c414afbe5cf6d4",
+  "source": "ecb",
+  "endpoint": "exr",
+  "params": {
+    "format": "csvdata"
+  },
+  "fetched_at": "2026-08-24T18:13:12.475292+00:00",
+  "content_sha256": "249c6d91ecbcf4210a069a3a6655a87b99b74c4bcfd102bca3c9ba499a77d2f4",
+  "bytes": 1479216,
+  "file": "f9c414afbe5cf6d4.csv"
+}
