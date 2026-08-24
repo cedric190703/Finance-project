@@ -1,5 +1,15 @@
 """Risk: factor histories, scenarios, VaR and Expected Shortfall."""
 
+from aegis.risk.backtest import (
+    BacktestResult,
+    BaselZone,
+    backtest_series,
+    basel_zone,
+    christoffersen_independence,
+    conditional_coverage,
+    kupiec_pof,
+    rolling_backtest,
+)
 from aegis.risk.factors import FactorHistory, FactorMapping, build_factor_history
 from aegis.risk.report import (
     RiskReport,
@@ -23,6 +33,8 @@ from aegis.risk.var import (
 )
 
 __all__ = [
+    "BacktestResult",
+    "BaselZone",
     "FactorHistory",
     "FactorMapping",
     "RiskReport",
@@ -31,8 +43,12 @@ __all__ = [
     "VarMethod",
     "VarResult",
     "apply_shocks",
+    "backtest_series",
+    "basel_zone",
     "build_factor_history",
     "build_market",
+    "christoffersen_independence",
+    "conditional_coverage",
     "contribution_report",
     "default_factor_mappings",
     "expected_shortfall",
@@ -40,9 +56,11 @@ __all__ = [
     "factor_history_for",
     "historical_pnl",
     "historical_var",
+    "kupiec_pof",
     "load_scenarios",
     "monte_carlo_var",
     "parametric_var",
+    "rolling_backtest",
     "run_report",
     "value_at_risk",
 ]
